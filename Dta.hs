@@ -28,7 +28,9 @@ module Dta where
                 | AlphaNum
                 | Integ
                 | Alphabet
+                | Operator
                 | Operation
+                | MidOp
                 | Other deriving (Show, Eq)
 
 
@@ -272,7 +274,7 @@ module Dta where
     modifyStateIds (Node dt1 ls) x = Node (fmap (Prelude.map (+ x)) dt1) ls
 
 
-    sequence' :: AutomatonWithInit t -> AutomatonWithInit t -> AutomatonWithInit t
+    sequence' :: AutomatonWithInit Token -> AutomatonWithInit Token -> AutomatonWithInit Token
     sequence' (AutWithInit i1 a1) (AutWithInit i2 a2) = AutWithInit i1 a0
       where
         n = maximum (IntMap.keys a1)
@@ -283,22 +285,56 @@ module Dta where
         t2 = IntMap.lookup i2' a2''
         f2 key node = insertTree node t2
         a1' = IntMap.mapWithKey f2 a1
-        a0 = IntMap.unions [a1',
+        a0 = IntMap.unions [a1',  --here there might be only one common keys, a1's value will be taken as desired
                             a2'
                             ]
 
-
-    --I am not sure about eql part of the dt
-    insertTree :: Node t -> Maybe (Node t) -> Node t
+    --not sure about eql part of the dt
+    insertTree :: Node Token -> Maybe (Node Token) -> Node Token
     insertTree node1 Nothing = node1
     insertTree node1@(Node dt1 []) (Just(Node dt2 lsF2)) = node1-- if node is not final [empty list] then do not add any tree
-    insertTree (Node dt1 ls) (Just(Node dt2 lsF2)) =  Node (insert dt1 dt2) lsF2 --or concat of ls-lfF2?
+    insertTree (Node dt1 ls) (Just(Node dt2 lsF2)) =  Node (insert dt1 dt2) (combList ls lsF2) --or concat of ls-lfF2?
       where
         insert:: DecTree [NodeId] -> DecTree [NodeId] -> DecTree [NodeId]
         insert (Leaf x) dt2 = dt2
         insert (Cmp p' lt' eql' gt') dt2 = Cmp p' (insert lt' dt2) eql' (insert gt' dt2)
 
 
+    combList :: [Token] -> [Token] -> [Token]
+    combList ts1 ts2 =[t |
+                       t1 <- ts1,
+                       t2 <- ts2,
+                       t <- maybeToList (comb t1 t2)]
+
+   --this function will be modified according to RE'S
+    comb :: Token -> Token -> Maybe Token
+    comb Alphabet AlphaNum = Just Ident
+    com  Integ Operator = Just MidOp
+    com MidOp Integ = Just Operation
+    com _ _ = Nothing
+
+
+    -- it will add ...
+    repetitivePlus :: AutomatonWithInit Token -> AutomatonWithInit Token
+    repetitivePlus (AutWithInit i1 a1) = AutWithInit i1 a1'
+      where
+        t1 = IntMap.lookup i1 a1  --initial state node
+        f key node = insertTreePlus node t1
+        a1' = IntMap.mapWithKey f a1
+
+
+
+
+    --not sure about eql part of the dt
+    --check diff of this method with the one in the sequence method be sure they are correct
+    insertTreePlus :: Node Token -> Maybe (Node Token) -> Node Token
+    insertTreePlus node1 Nothing = node1
+    insertTreePlus node1@(Node dt1 []) (Just(Node dt2 lsF2)) = node1-- if node is not final [empty list] then do not add any tree
+    insertTreePlus (Node dt1 ls) (Just(Node dt2 lsF2)) =  Node (insert dt1 dt2) (combList ls lsF2) --comList still appliable here?
+      where
+        insert:: DecTree [NodeId] -> DecTree [NodeId] -> DecTree [NodeId]
+        insert (Leaf x) dt2 = fmap (++ x) dt2
+        insert (Cmp p' lt' eql' gt') dt2 = Cmp p' (insert lt' dt2) eql' (insert gt' dt2)
 
 
     --First lets create a decision trees for nodes which is added to automata
